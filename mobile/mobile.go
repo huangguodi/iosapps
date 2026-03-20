@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -32,6 +33,8 @@ var (
 	stateMu            sync.Mutex
 	homeDir            string
 	cfgFile            string
+	appGroupDir        string
+	lastConfigLoadAt   time.Time
 	isActive           bool
 	socketProtectorMu  sync.RWMutex
 	currentProtector   SocketProtector
@@ -154,21 +157,49 @@ func ClearPacketFlowBridge() {
 	sing_tun.ClearPacketFlowBridge()
 }
 
+func FeedPacketFromFlow(packet *PacketFlowPacket) bool {
+	if packet == nil {
+		return false
+	}
+	return sing_tun.FeedPacketFromFlow(sing_tun.NewPacketFlowPacket(packet.data, packet.af))
+}
+
+func SetAppGroupDirectory(dir string) bool {
+	normalized, ok := normalizeDir(dir)
+	if !ok {
+		return false
+	}
+	stateMu.Lock()
+	appGroupDir = normalized
+	stateMu.Unlock()
+	return true
+}
+
 func Start(home, configFileName string) {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
-	homeDir = home
+	if appGroupDir == "" {
+		panic("app group directory is required")
+	}
+	homeDir = appGroupDir
 	cfgFile = configFileName
 
 	C.SetHomeDir(homeDir)
-	C.SetConfig(filepath.Join(homeDir, cfgFile))
+	configPath, ok := resolveConfigPath(homeDir, cfgFile)
+	if !ok {
+		panic("config path is outside app group directory")
+	}
+	C.SetConfig(configPath)
 	if err := config.Init(C.Path.HomeDir()); err != nil {
 		panic(err)
 	}
-	if err := hub.Parse(nil, applyIOSCoreProfile); err != nil {
+	cfg, err := parseIOSConfig(C.Path.Config())
+	if err != nil {
 		panic(err)
 	}
+	hub.ApplyConfig(cfg)
+	lastConfigLoadAt = time.Now()
 	isActive = true
 }
 
@@ -180,6 +211,61 @@ func Stop() {
 	}
 	executor.Shutdown()
 	isActive = false
+}
+
+func Sleep() {
+	Stop()
+}
+
+func Wake() bool {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	if homeDir == "" || cfgFile == "" {
+		return false
+	}
+	if isActive {
+		return true
+	}
+	C.SetHomeDir(homeDir)
+	configPath, ok := resolveConfigPath(homeDir, cfgFile)
+	if !ok {
+		return false
+	}
+	C.SetConfig(configPath)
+	cfg, err := parseIOSConfig(C.Path.Config())
+	if err != nil {
+		return false
+	}
+	hub.ApplyConfig(cfg)
+	lastConfigLoadAt = time.Now()
+	isActive = true
+	return true
+}
+
+func RestartTunnelForNetworkChange() bool {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	if homeDir == "" || cfgFile == "" {
+		return false
+	}
+	if isActive {
+		executor.Shutdown()
+		isActive = false
+	}
+	C.SetHomeDir(homeDir)
+	configPath, ok := resolveConfigPath(homeDir, cfgFile)
+	if !ok {
+		return false
+	}
+	C.SetConfig(configPath)
+	cfg, err := parseIOSConfig(C.Path.Config())
+	if err != nil {
+		return false
+	}
+	hub.ApplyConfig(cfg)
+	lastConfigLoadAt = time.Now()
+	isActive = true
+	return true
 }
 
 func SetLogLevel(level string) {
@@ -196,14 +282,21 @@ func ForceUpdateConfig(configFileName string) {
 	if homeDir == "" {
 		return
 	}
+	if time.Since(lastConfigLoadAt) < time.Second {
+		return
+	}
 	cfgFile = configFileName
-	C.SetConfig(filepath.Join(homeDir, cfgFile))
-	cfg, err := executor.Parse()
+	configPath, ok := resolveConfigPath(homeDir, cfgFile)
+	if !ok {
+		panic("config path is outside app group directory")
+	}
+	C.SetConfig(configPath)
+	cfg, err := parseIOSConfig(C.Path.Config())
 	if err != nil {
 		panic(err)
 	}
-	applyIOSCoreProfile(cfg)
 	hub.ApplyConfig(cfg)
+	lastConfigLoadAt = time.Now()
 }
 
 func SetMode(mode string) {
@@ -313,6 +406,158 @@ func Version() string {
 	return C.Version
 }
 
+func parseIOSConfig(path string) (*config.Config, error) {
+	if !isPathInsideDir(path, homeDir) {
+		return nil, fmt.Errorf("config path is outside app group directory")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := config.UnmarshalRawConfig(data)
+	if err != nil {
+		return nil, err
+	}
+	applyIOSRawProfile(raw)
+	cfg, err := config.ParseRawConfig(raw)
+	if err != nil {
+		return nil, err
+	}
+	applyIOSCoreProfile(cfg)
+	return cfg, nil
+}
+
+func normalizeDir(dir string) (string, bool) {
+	if dir == "" {
+		return "", false
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	return filepath.Clean(abs), true
+}
+
+func resolveConfigPath(baseDir, fileName string) (string, bool) {
+	if fileName == "" {
+		return "", false
+	}
+	if filepath.IsAbs(fileName) {
+		if isPathInsideDir(fileName, baseDir) {
+			return filepath.Clean(fileName), true
+		}
+		return "", false
+	}
+	joined := filepath.Join(baseDir, fileName)
+	if !isPathInsideDir(joined, baseDir) {
+		return "", false
+	}
+	return filepath.Clean(joined), true
+}
+
+func isPathInsideDir(path, baseDir string) bool {
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	pathClean := filepath.Clean(pathAbs)
+	baseClean := filepath.Clean(baseAbs)
+	if pathClean == baseClean {
+		return true
+	}
+	prefix := baseClean + string(filepath.Separator)
+	return strings.HasPrefix(pathClean, prefix)
+}
+
+func applyIOSRawProfile(raw *config.RawConfig) {
+	if raw == nil {
+		return
+	}
+	raw.FindProcessMode = process.FindProcessOff
+	raw.LogLevel = log.SILENT
+	raw.GeoAutoUpdate = false
+	raw.GeoUpdateInterval = 0
+	raw.GeodataLoader = "memconservative"
+	raw.ExternalController = ""
+	raw.ExternalControllerTLS = ""
+	raw.ExternalControllerUnix = ""
+	raw.ExternalControllerPipe = ""
+	raw.ExternalUI = ""
+	raw.ExternalUIURL = ""
+	raw.ExternalUIName = ""
+	raw.ExternalDohServer = ""
+	raw.Secret = ""
+	raw.Profile.StoreSelected = false
+	raw.Profile.StoreFakeIP = false
+	raw.Sniffer.Enable = false
+	raw.Sniffer.Sniff = map[string]config.RawSniffingConfig{}
+	raw.Sniffer.Sniffing = nil
+	raw.Sniffer.ForceDomain = nil
+	raw.Sniffer.SkipSrcAddress = nil
+	raw.Sniffer.SkipDstAddress = nil
+	raw.Sniffer.SkipDomain = nil
+	raw.Sniffer.ForceDnsMapping = false
+	raw.Sniffer.ParsePureIp = false
+	raw.Hosts = map[string]any{}
+	raw.DNS.EnhancedMode = C.DNSNormal
+	raw.DNS.RespectRules = false
+	raw.DNS.PreferH3 = false
+	raw.DNS.Listen = ""
+	raw.DNS.FakeIPRange = ""
+	raw.DNS.FakeIPRange6 = ""
+	raw.DNS.FakeIPFilter = nil
+	raw.DNS.FakeIPTTL = 0
+	raw.DNS.UseHosts = false
+	raw.DNS.UseSystemHosts = false
+	raw.DNS.Fallback = nil
+	raw.DNS.FallbackFilter = config.RawFallbackFilter{}
+	raw.DNS.NameServerPolicy = nil
+	raw.DNS.ProxyServerNameserver = nil
+	raw.DNS.ProxyServerNameserverPolicy = nil
+	raw.DNS.DirectNameServer = nil
+	raw.DNS.DirectNameServerFollowPolicy = false
+	raw.DNS.CacheAlgorithm = ""
+	raw.DNS.CacheMaxSize = 0
+	raw.Tun.DNSHijack = nil
+	raw.Tun.FileDescriptor = 0
+	raw.Tun.RecvMsgX = false
+	raw.Tun.SendMsgX = false
+	raw.Tun.Device = ""
+	raw.Tun.StrictRoute = false
+	raw.Tun.RouteAddress = nil
+	raw.Tun.RouteExcludeAddress = nil
+	raw.Tun.Inet4RouteAddress = nil
+	raw.Tun.Inet6RouteAddress = nil
+	raw.Tun.Inet4RouteExcludeAddress = nil
+	raw.Tun.Inet6RouteExcludeAddress = nil
+	raw.Tun.IncludeInterface = nil
+	raw.Tun.ExcludeInterface = nil
+	raw.Tun.IPRoute2TableIndex = 0
+	raw.Tun.IPRoute2RuleIndex = 0
+	raw.Tun.AutoRedirectInputMark = 0
+	raw.Tun.AutoRedirectOutputMark = 0
+	raw.Tun.AutoRedirectIPRoute2FallbackRuleIndex = 0
+	raw.Tun.LoopbackAddress = nil
+	raw.Tun.AutoRoute = false
+	raw.Tun.AutoDetectInterface = false
+	raw.Tun.AutoRedirect = false
+	raw.Tun.IncludeAndroidUser = nil
+	raw.Tun.IncludePackage = nil
+	raw.Tun.ExcludePackage = nil
+	raw.Tun.IncludeUID = nil
+	raw.Tun.IncludeUIDRange = nil
+	raw.Tun.ExcludeUID = nil
+	raw.Tun.ExcludeUIDRange = nil
+	raw.Tun.RouteAddressSet = nil
+	raw.Tun.RouteExcludeAddressSet = nil
+	raw.ProxyProvider = map[string]map[string]any{}
+	raw.RuleProvider = map[string]map[string]any{}
+}
+
 func applyIOSCoreProfile(cfg *config.Config) {
 	if cfg == nil {
 		return
@@ -334,17 +579,46 @@ func applyIOSCoreProfile(cfg *config.Config) {
 		tun.RouteAddressSet = nil
 		tun.RouteExcludeAddressSet = nil
 		tun.FileDescriptor = 0
+		tun.RecvMsgX = false
+		tun.SendMsgX = false
+		tun.Device = ""
+		tun.StrictRoute = false
+		tun.RouteAddress = nil
+		tun.RouteExcludeAddress = nil
+		tun.Inet4RouteAddress = nil
+		tun.Inet6RouteAddress = nil
+		tun.Inet4RouteExcludeAddress = nil
+		tun.Inet6RouteExcludeAddress = nil
+		tun.IncludeInterface = nil
+		tun.ExcludeInterface = nil
+		tun.IPRoute2TableIndex = 0
+		tun.IPRoute2RuleIndex = 0
+		tun.AutoRedirectInputMark = 0
+		tun.AutoRedirectOutputMark = 0
+		tun.AutoRedirectIPRoute2FallbackRuleIndex = 0
+		tun.LoopbackAddress = nil
 	}
 	if cfg.DNS != nil {
 		cfg.DNS.EnhancedMode = C.DNSNormal
+		cfg.DNS.Listen = ""
+		cfg.DNS.FakeIPRange = netip.Prefix{}
+		cfg.DNS.FakeIPRange6 = netip.Prefix{}
 		cfg.DNS.FakeIPPool = nil
 		cfg.DNS.FakeIPPool6 = nil
 		cfg.DNS.FakeIPSkipper = nil
 		cfg.DNS.FakeIPTTL = 0
 		cfg.DNS.UseHosts = false
 		cfg.DNS.UseSystemHosts = false
+		cfg.DNS.Fallback = nil
+		cfg.DNS.FallbackIPFilter = nil
+		cfg.DNS.FallbackDomainFilter = nil
+		cfg.DNS.ProxyServerNameserver = nil
+		cfg.DNS.DirectNameServer = nil
+		cfg.DNS.DirectFollowPolicy = false
 		cfg.DNS.NameServerPolicy = nil
 		cfg.DNS.ProxyServerPolicy = nil
+		cfg.DNS.CacheAlgorithm = ""
+		cfg.DNS.CacheMaxSize = 0
 	}
 	cfg.Hosts = nil
 	if cfg.Controller != nil {

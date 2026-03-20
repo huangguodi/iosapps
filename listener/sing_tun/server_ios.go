@@ -8,6 +8,12 @@ import (
 )
 
 func tunNew(options tun.Options) (tun.Tun, error) {
+	if options.FileDescriptor != 0 {
+		return nil, errors.New("ios packet flow mode does not support tun file descriptor")
+	}
+	if options.Name != "" {
+		return nil, errors.New("ios packet flow mode does not support custom tun device name")
+	}
 	bridge := getPacketFlowBridge()
 	if bridge != nil {
 		return newPacketFlowTun(bridge), nil

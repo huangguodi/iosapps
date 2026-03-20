@@ -3,7 +3,6 @@ package sing_tun
 import (
 	"errors"
 	"sync"
-	"time"
 )
 
 type PacketFlowPacket struct {
@@ -39,11 +38,18 @@ type PacketFlowBridge interface {
 var (
 	packetFlowBridgeMu sync.RWMutex
 	packetFlowBridge   PacketFlowBridge
+	packetInboundQueue chan *PacketFlowPacket
 )
 
 func SetPacketFlowBridge(bridge PacketFlowBridge) {
 	packetFlowBridgeMu.Lock()
 	packetFlowBridge = bridge
+	if bridge != nil && packetInboundQueue == nil {
+		packetInboundQueue = make(chan *PacketFlowPacket, 8192)
+	}
+	if bridge == nil {
+		packetInboundQueue = nil
+	}
 	packetFlowBridgeMu.Unlock()
 }
 
@@ -58,43 +64,67 @@ func getPacketFlowBridge() PacketFlowBridge {
 	return bridge
 }
 
+func FeedPacketFromFlow(packet *PacketFlowPacket) bool {
+	if packet == nil || len(packet.data) == 0 {
+		return false
+	}
+	packetFlowBridgeMu.RLock()
+	queue := packetInboundQueue
+	packetFlowBridgeMu.RUnlock()
+	if queue == nil {
+		return false
+	}
+	select {
+	case queue <- NewPacketFlowPacket(packet.data, packet.af):
+		return true
+	default:
+		return false
+	}
+}
+
 type packetFlowTun struct {
 	bridge PacketFlowBridge
 	closed chan struct{}
+	queue  chan *PacketFlowPacket
 }
 
 func newPacketFlowTun(bridge PacketFlowBridge) *packetFlowTun {
+	packetFlowBridgeMu.RLock()
+	queue := packetInboundQueue
+	packetFlowBridgeMu.RUnlock()
 	return &packetFlowTun{
 		bridge: bridge,
 		closed: make(chan struct{}),
+		queue:  queue,
 	}
 }
 
 func (t *packetFlowTun) Read(p []byte) (int, error) {
+	if t.queue == nil {
+		return 0, errors.New("packet queue not initialized")
+	}
 	for {
 		select {
 		case <-t.closed:
 			return 0, errors.New("closed")
-		default:
+		case packet := <-t.queue:
+			if packet == nil || len(packet.data) == 0 {
+				continue
+			}
+			payloadLen := len(packet.data) + 4
+			if payloadLen > len(p) {
+				payloadLen = len(p)
+			}
+			if payloadLen < 5 {
+				return 0, nil
+			}
+			p[0] = 0
+			p[1] = 0
+			p[2] = 0
+			p[3] = byte(packet.af)
+			copy(p[4:payloadLen], packet.data[:payloadLen-4])
+			return payloadLen, nil
 		}
-		packet := t.bridge.ReadPacket()
-		if packet == nil || len(packet.data) == 0 {
-			time.Sleep(2 * time.Millisecond)
-			continue
-		}
-		payloadLen := len(packet.data) + 4
-		if payloadLen > len(p) {
-			payloadLen = len(p)
-		}
-		if payloadLen < 5 {
-			return 0, nil
-		}
-		p[0] = 0
-		p[1] = 0
-		p[2] = 0
-		p[3] = byte(packet.af)
-		copy(p[4:payloadLen], packet.data[:payloadLen-4])
-		return payloadLen, nil
 	}
 }
 
