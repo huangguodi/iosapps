@@ -33,7 +33,25 @@ jobs:
           GO_TAGS: ${{ github.event.inputs.go_tags || '' }}
         run: bash .github/scripts/build-ios-static.sh
 
-      - name: Upload artifacts
+      - name: Verify outputs
+        run: |
+          ls -la build/ios-static
+          test -f build/ios-static/libmihomo.a
+          test -f build/ios-static/libmihomo.h
+
+      - name: Upload libmihomo.a
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmihomo-a
+          path: build/ios-static/libmihomo.a
+
+      - name: Upload libmihomo.h
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmihomo-h
+          path: build/ios-static/libmihomo.h
+
+      - name: Upload bundle artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ios-static-lib
