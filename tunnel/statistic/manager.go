@@ -112,6 +112,13 @@ func (m *Manager) ResetStatistic() {
 	m.downloadTotal.Store(0)
 }
 
+func (m *Manager) ClearConnections() {
+	m.Range(func(c Tracker) bool {
+		_ = c.Close()
+		return true
+	})
+}
+
 func (m *Manager) handle() {
 	ticker := time.NewTicker(time.Second)
 
