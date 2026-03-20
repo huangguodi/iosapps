@@ -1,6 +1,15 @@
 name: Build iOS Static
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/scripts/build-ios-static.sh"
+      - ".github/workflows/build-ios-static.yml"
+      - "mobile/**"
+      - "go.mod"
+      - "go.sum"
   workflow_dispatch:
     inputs:
       go_tags:
@@ -27,7 +36,7 @@ jobs:
 
       - name: Build libmihomo.a and header
         env:
-          GO_TAGS: ${{ inputs.go_tags }}
+          GO_TAGS: ${{ github.event.inputs.go_tags || '' }}
         run: bash .github/scripts/build-ios-static.sh
 
       - name: Upload artifacts
