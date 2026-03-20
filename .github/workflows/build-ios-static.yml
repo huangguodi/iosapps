@@ -1,0 +1,39 @@
+name: Build iOS Static
+
+on:
+  workflow_dispatch:
+    inputs:
+      go_tags:
+        description: Go build tags
+        required: false
+        default: ""
+
+jobs:
+  build-ios-static:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Build libmihomo.a and header
+        env:
+          GO_TAGS: ${{ inputs.go_tags }}
+        run: bash .github/scripts/build-ios-static.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-static-lib
+          path: |
+            build/ios-static/libmihomo.a
+            build/ios-static/libmihomo.h
