@@ -17,6 +17,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/mmdb"
+	"github.com/metacubex/mihomo/component/process"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
@@ -165,7 +166,7 @@ func Start(home, configFileName string) {
 	if err := config.Init(C.Path.HomeDir()); err != nil {
 		panic(err)
 	}
-	if err := hub.Parse(nil); err != nil {
+	if err := hub.Parse(nil, applyIOSCoreProfile); err != nil {
 		panic(err)
 	}
 	isActive = true
@@ -201,6 +202,7 @@ func ForceUpdateConfig(configFileName string) {
 	if err != nil {
 		panic(err)
 	}
+	applyIOSCoreProfile(cfg)
 	hub.ApplyConfig(cfg)
 }
 
@@ -309,6 +311,69 @@ func TestLatency(proxyName string) string {
 
 func Version() string {
 	return C.Version
+}
+
+func applyIOSCoreProfile(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.General != nil {
+		cfg.General.FindProcessMode = process.FindProcessOff
+		tun := &cfg.General.Tun
+		tun.AutoRoute = false
+		tun.AutoDetectInterface = false
+		tun.AutoRedirect = false
+		tun.DNSHijack = nil
+		tun.IncludeAndroidUser = nil
+		tun.IncludePackage = nil
+		tun.ExcludePackage = nil
+		tun.IncludeUID = nil
+		tun.IncludeUIDRange = nil
+		tun.ExcludeUID = nil
+		tun.ExcludeUIDRange = nil
+		tun.RouteAddressSet = nil
+		tun.RouteExcludeAddressSet = nil
+		tun.FileDescriptor = 0
+	}
+	if cfg.DNS != nil {
+		cfg.DNS.EnhancedMode = C.DNSNormal
+		cfg.DNS.FakeIPPool = nil
+		cfg.DNS.FakeIPPool6 = nil
+		cfg.DNS.FakeIPSkipper = nil
+		cfg.DNS.FakeIPTTL = 0
+		cfg.DNS.UseHosts = false
+		cfg.DNS.UseSystemHosts = false
+		cfg.DNS.NameServerPolicy = nil
+		cfg.DNS.ProxyServerPolicy = nil
+	}
+	cfg.Hosts = nil
+	if cfg.Controller != nil {
+		cfg.Controller.ExternalController = ""
+		cfg.Controller.ExternalControllerTLS = ""
+		cfg.Controller.ExternalControllerUnix = ""
+		cfg.Controller.ExternalControllerPipe = ""
+		cfg.Controller.ExternalUI = ""
+		cfg.Controller.ExternalUIURL = ""
+		cfg.Controller.ExternalUIName = ""
+		cfg.Controller.ExternalDohServer = ""
+		cfg.Controller.Secret = ""
+	}
+	if cfg.Profile != nil {
+		cfg.Profile.StoreSelected = false
+		cfg.Profile.StoreFakeIP = false
+	}
+	if cfg.Sniffer != nil {
+		cfg.Sniffer.Enable = false
+		cfg.Sniffer.Sniffers = nil
+		cfg.Sniffer.ForceDomain = nil
+		cfg.Sniffer.SkipSrcAddress = nil
+		cfg.Sniffer.SkipDstAddress = nil
+		cfg.Sniffer.SkipDomain = nil
+		cfg.Sniffer.ForceDnsMapping = false
+		cfg.Sniffer.ParsePureIp = false
+	}
+	cfg.Providers = nil
+	cfg.RuleProviders = nil
 }
 
 func proxiesWithProviders() map[string]C.Proxy {
