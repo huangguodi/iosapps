@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/scripts/build-ios-static.sh"
-      - ".github/workflows/build-ios-static.yml"
-      - "mobile/**"
-      - "go.mod"
-      - "go.sum"
   workflow_dispatch:
     inputs:
       go_tags:
