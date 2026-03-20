@@ -1,4 +1,4 @@
-//go:build !windows && !ios
+//go:build ios
 
 package sing_tun
 
@@ -7,5 +7,9 @@ import (
 )
 
 func tunNew(options tun.Options) (tun.Tun, error) {
+	bridge := getPacketFlowBridge()
+	if bridge != nil {
+		return newPacketFlowTun(bridge), nil
+	}
 	return tun.New(options)
 }

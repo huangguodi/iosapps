@@ -21,6 +21,7 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
+	"github.com/metacubex/mihomo/listener/sing_tun"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
@@ -39,6 +40,65 @@ var (
 type SocketProtector interface {
 	ProtectSocket(fd int64, network string, address string) bool
 	MarkSocket(fd int64, network string, address string) bool
+}
+
+type PacketFlowPacket struct {
+	data []byte
+	af   int64
+}
+
+func NewPacketFlowPacket(data []byte, af int64) *PacketFlowPacket {
+	cloned := append([]byte(nil), data...)
+	return &PacketFlowPacket{data: cloned, af: af}
+}
+
+func (p *PacketFlowPacket) Data() []byte {
+	if p == nil {
+		return nil
+	}
+	return append([]byte(nil), p.data...)
+}
+
+func (p *PacketFlowPacket) AF() int64 {
+	if p == nil {
+		return 0
+	}
+	return p.af
+}
+
+type PacketFlowBridge interface {
+	ReadPacket() *PacketFlowPacket
+	WritePacket(packet *PacketFlowPacket) bool
+	OnPacketFlowError(message string)
+}
+
+type packetFlowBridgeAdapter struct {
+	bridge PacketFlowBridge
+}
+
+func (a *packetFlowBridgeAdapter) ReadPacket() *sing_tun.PacketFlowPacket {
+	if a == nil || a.bridge == nil {
+		return nil
+	}
+	packet := a.bridge.ReadPacket()
+	if packet == nil {
+		return nil
+	}
+	return sing_tun.NewPacketFlowPacket(packet.data, packet.af)
+}
+
+func (a *packetFlowBridgeAdapter) WritePacket(packet *sing_tun.PacketFlowPacket) bool {
+	if a == nil || a.bridge == nil || packet == nil {
+		return false
+	}
+	return a.bridge.WritePacket(NewPacketFlowPacket(packet.Data(), packet.AF()))
+}
+
+func (a *packetFlowBridgeAdapter) OnPacketFlowError(message string) {
+	if a == nil || a.bridge == nil {
+		return
+	}
+	a.bridge.OnPacketFlowError(message)
 }
 
 func SetSocketProtector(protector SocketProtector) {
@@ -79,6 +139,18 @@ func SetSocketProtector(protector SocketProtector) {
 
 func ClearSocketProtector() {
 	SetSocketProtector(nil)
+}
+
+func SetPacketFlowBridge(bridge PacketFlowBridge) {
+	if bridge == nil {
+		sing_tun.ClearPacketFlowBridge()
+		return
+	}
+	sing_tun.SetPacketFlowBridge(&packetFlowBridgeAdapter{bridge: bridge})
+}
+
+func ClearPacketFlowBridge() {
+	sing_tun.ClearPacketFlowBridge()
 }
 
 func Start(home, configFileName string) {
