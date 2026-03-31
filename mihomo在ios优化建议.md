@@ -7,7 +7,7 @@
 
 ---
 
-## 核心优化点 1：重构 CGO 跨语言内存生命周期 (解决致命崩溃)
+## 核心优化点 1：重构 CGO 跨语言内存生命周期 (解决致命崩溃)1
 
 **当前痛点（大坑）：**
 目前 iOS 扩展端每次收到网络包，都调用 `MobileNewPacketFlowPacket` 创建一个由 gomobile 包装的对象，再通过 `MobileFeedPacketFromFlow` 喂给内核。
