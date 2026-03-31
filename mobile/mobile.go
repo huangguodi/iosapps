@@ -193,7 +193,9 @@ func FeedPacketsBytesBatch(data [][]byte, afs []int64) int {
 }
 
 func SetAppGroupDirectory(dir string) bool {
-	normalized, ok := normalizeDir(dir)
+	// Deep copy to prevent ARC premature release
+	dirCopy := string(append([]byte(nil), dir...))
+	normalized, ok := normalizeDir(dirCopy)
 	if !ok {
 		return false
 	}
@@ -204,6 +206,10 @@ func SetAppGroupDirectory(dir string) bool {
 }
 
 func Start(home, configFileName string) {
+	// Deep copy to prevent ARC premature release
+	homeCopy := string(append([]byte(nil), home...))
+	configFileNameCopy := string(append([]byte(nil), configFileName...))
+	
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
@@ -211,7 +217,7 @@ func Start(home, configFileName string) {
 		panic("app group directory is required")
 	}
 	homeDir = appGroupDir
-	cfgFile = configFileName
+	cfgFile = configFileNameCopy
 
 	C.SetHomeDir(homeDir)
 	configPath, ok := resolveConfigPath(homeDir, cfgFile)
@@ -326,7 +332,9 @@ func ResetNetwork() {
 }
 
 func SetLogLevel(level string) {
-	logLevel, ok := log.LogLevelMapping[strings.ToLower(level)]
+	// Deep copy
+	levelCopy := string(append([]byte(nil), level...))
+	logLevel, ok := log.LogLevelMapping[strings.ToLower(levelCopy)]
 	if !ok {
 		return
 	}
@@ -334,6 +342,8 @@ func SetLogLevel(level string) {
 }
 
 func ForceUpdateConfig(configFileName string) {
+	// Deep copy
+	configFileNameCopy := string(append([]byte(nil), configFileName...))
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	if homeDir == "" {
@@ -342,7 +352,7 @@ func ForceUpdateConfig(configFileName string) {
 	if time.Since(lastConfigLoadAt) < time.Second {
 		return
 	}
-	cfgFile = configFileName
+	cfgFile = configFileNameCopy
 	configPath, ok := resolveConfigPath(homeDir, cfgFile)
 	if !ok {
 		panic("config path is outside app group directory")
@@ -357,7 +367,9 @@ func ForceUpdateConfig(configFileName string) {
 }
 
 func SetMode(mode string) {
-	if m, ok := tunnel.ModeMapping[strings.ToLower(mode)]; ok {
+	// Deep copy
+	modeCopy := string(append([]byte(nil), mode...))
+	if m, ok := tunnel.ModeMapping[strings.ToLower(modeCopy)]; ok {
 		tunnel.SetMode(m)
 		statistic.DefaultManager.ClearConnections()
 	}
@@ -403,14 +415,18 @@ func ProxyNames() string {
 }
 
 func SelectProxy(groupName, proxyName string) bool {
+	// Deep copy
+	groupNameCopy := string(append([]byte(nil), groupName...))
+	proxyNameCopy := string(append([]byte(nil), proxyName...))
+	
 	proxies := tunnel.Proxies()
-	group, ok := proxies[groupName]
+	group, ok := proxies[groupNameCopy]
 	if !ok {
 		return false
 	}
 
 	selector := findSelectable(group)
-	if selector == nil && strings.EqualFold(groupName, "GLOBAL") {
+	if selector == nil && strings.EqualFold(groupNameCopy, "GLOBAL") {
 		if globalGroup, exists := proxies["GLOBAL"]; exists {
 			selector = findSelectable(globalGroup)
 		}
@@ -418,7 +434,7 @@ func SelectProxy(groupName, proxyName string) bool {
 	if selector == nil {
 		return false
 	}
-	if err := selector.Set(proxyName); err != nil {
+	if err := selector.Set(proxyNameCopy); err != nil {
 		return false
 	}
 	statistic.DefaultManager.ClearConnections()
@@ -446,7 +462,10 @@ func TrafficTotalDown() int64 {
 }
 
 func TestLatency(proxyName string) string {
-	proxy, ok := proxiesWithProviders()[proxyName]
+	// Deep copy
+	proxyNameCopy := string(append([]byte(nil), proxyName...))
+	
+	proxy, ok := proxiesWithProviders()[proxyNameCopy]
 	if !ok {
 		return ""
 	}
