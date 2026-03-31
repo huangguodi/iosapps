@@ -44,12 +44,18 @@ if [[ ! -f "$ARM64_FRAMEWORK_DIR/Mobile" ]]; then
 fi
 cp "$ARM64_FRAMEWORK_DIR/Mobile" "$OUT_DIR/libmihomo.a"
 
-HEADER_FILE="$(find "$ARM64_FRAMEWORK_DIR/Headers" -maxdepth 1 -name "*.h" | head -n 1)"
+HEADER_DIR="$ARM64_FRAMEWORK_DIR/Headers"
+HEADER_FILE="$(find "$HEADER_DIR" -maxdepth 1 -name "*.h" | head -n 1)"
 if [[ -z "$HEADER_FILE" ]]; then
   echo "header file not found in $ARM64_FRAMEWORK_DIR/Headers"
   exit 1
 fi
 cp "$HEADER_FILE" "$OUT_DIR/libmihomo.h"
+
+while IFS= read -r -d '' header_path; do
+  header_name="$(basename "$header_path")"
+  cp "$header_path" "$OUT_DIR/$header_name"
+done < <(find "$HEADER_DIR" -maxdepth 1 -type f \( -name "*.h" -o -name "*.modulemap" \) -print0)
 
 if otool -L "$ARM64_FRAMEWORK_DIR/Mobile" | grep -E "libcrypto\\.(so|dylib)|libssl\\.(so|dylib)" >/dev/null; then
   echo "dynamic crypto library detected in output"
