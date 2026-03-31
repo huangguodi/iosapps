@@ -7,13 +7,13 @@
 
 ## 优化需求核对清单 (已全部完成)
 
-- [x] **新增 C 导出函数，支持从内存字符串启动**
+- [x] **新增纯 Go 内存启动接口，支持从内存字符串启动**
   - **实现位置**：`mobile/mobile_c_api.go`
-  - **说明**：已新增 `//export MobileStartWithMemory` 接口。配置直接从内存反序列化，全程不进行文件 I/O。
+  - **说明**：已新增 `func MobileStartWithMemory(cfgStr string)` 接口。配置直接从内存反序列化，全程不进行文件 I/O。
 
 - [x] **新增空函数 `MihomoWarmup()`，用于提前触发 Go runtime 初始化**
   - **实现位置**：`mobile/mobile_c_api.go`
-  - **说明**：已暴露纯 C 符号 `MihomoWarmup`，可在扩展的极早期调用。
+  - **说明**：已暴露纯 Go 接口 `MihomoWarmup`，可在扩展的极早期调用。
 
 - [x] **设置 `runtime.GOMAXPROCS(1)`，减少线程竞争**
   - **实现位置**：`MobileStartWithMemory` 函数入口处。
@@ -53,33 +53,16 @@
 
 ## iOS 端对接与调用示例
 
-由于新增的接口是纯 C 导出（脱离了 `gomobile` 繁重的对象包装），**在 Swift/Objective-C 中调用时极其轻量**。请在您的 `Bridging-Header.h` 中添加如下声明即可直接使用：
-
-```c
-// 在 iOS 项目的 Bridging Header 中添加
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// 提前唤醒 Go Runtime
-extern void MihomoWarmup();
-
-// 直接从内存加载 YAML 字符串启动
-extern void MobileStartWithMemory(char* configC);
-
-#ifdef __cplusplus
-}
-#endif
-```
+由于接口已经改为标准的 Go 导出类型（去除了有缺陷的 CGO 混用），`gomobile` 工具会自动为您生成对应的 Objective-C/Swift 安全绑定代码。您**不需要**再手动声明任何 C 头文件了。
 
 ### Swift 调用示例：
 ```swift
+import Mobile // 引入生成的 framework
+
 // 1. 扩展进程刚启动时，提前唤醒 (可选)
-MihomoWarmup()
+MobileMihomoWarmup()
 
 // 2. 获取到配置字符串后，直接启动
 let yamlString = "..." // 从主 App 传递过来的配置
-yamlString.withCString { cString in
-    MobileStartWithMemory(UnsafeMutablePointer(mutating: cString))
-}
+MobileMobileStartWithMemory(yamlString)
 ```

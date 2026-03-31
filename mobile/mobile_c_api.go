@@ -1,9 +1,5 @@
 package mobile
 
-/*
-#include <stdlib.h>
-*/
-import "C"
 import (
 	"os"
 	"runtime"
@@ -15,10 +11,8 @@ import (
 	"github.com/metacubex/mihomo/log"
 )
 
-//export MobileStartWithMemory
-func MobileStartWithMemory(configC *C.char) {
-	cfgStr := C.GoString(configC)
-
+// MobileStartWithMemory starts the core with a configuration string directly from memory
+func MobileStartWithMemory(cfgStr string) {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
@@ -47,7 +41,7 @@ func MobileStartWithMemory(configC *C.char) {
 	isActive = true
 }
 
-//export MihomoWarmup
+// MihomoWarmup is an empty function to trigger Go runtime initialization
 func MihomoWarmup() {
 	// Empty function to trigger Go runtime initialization
 }
