@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	URL "net/url"
-	"runtime"
 	"strings"
 	"time"
 
