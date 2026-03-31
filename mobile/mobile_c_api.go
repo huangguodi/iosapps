@@ -12,7 +12,7 @@ import (
 )
 
 // MobileStartWithMemory starts the core with a configuration string directly from memory
-func MobileStartWithMemory(cfgStr string) {
+func MobileStartWithMemory(cfgStr string) error {
 	// 强制在 Go 堆上深拷贝一份配置数据，彻底切断与 Swift/Objective-C 的内存生命周期绑定
 	// 避免解析过程中 iOS 端 ARC 提前释放字符串导致底层崩溃
 	configBytes := make([]byte, len(cfgStr))
@@ -37,13 +37,15 @@ func MobileStartWithMemory(cfgStr string) {
 	// Parse config directly from memory using the deep-copied bytes
 	cfg, err := parseIOSConfigFromMemory(configBytes)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Apply config
 	hub.ApplyConfig(cfg)
 	lastConfigLoadAt = time.Now()
 	isActive = true
+	
+	return nil
 }
 
 // MihomoWarmup is an empty function to trigger Go runtime initialization

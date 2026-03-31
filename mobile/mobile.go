@@ -194,7 +194,7 @@ func FeedPacketsBytesBatch(data [][]byte, afs []int64) int {
 
 func SetAppGroupDirectory(dir string) bool {
 	// Deep copy to prevent ARC premature release
-	dirCopy := string(append([]byte(nil), dir...))
+	dirCopy := strings.Clone(dir)
 	normalized, ok := normalizeDir(dirCopy)
 	if !ok {
 		return false
@@ -207,8 +207,8 @@ func SetAppGroupDirectory(dir string) bool {
 
 func Start(home, configFileName string) {
 	// Deep copy to prevent ARC premature release
-	homeCopy := string(append([]byte(nil), home...))
-	configFileNameCopy := string(append([]byte(nil), configFileName...))
+	homeCopy := strings.Clone(home)
+	configFileNameCopy := strings.Clone(configFileName)
 	
 	stateMu.Lock()
 	defer stateMu.Unlock()
@@ -333,7 +333,7 @@ func ResetNetwork() {
 
 func SetLogLevel(level string) {
 	// Deep copy
-	levelCopy := string(append([]byte(nil), level...))
+	levelCopy := strings.Clone(level)
 	logLevel, ok := log.LogLevelMapping[strings.ToLower(levelCopy)]
 	if !ok {
 		return
@@ -343,7 +343,7 @@ func SetLogLevel(level string) {
 
 func ForceUpdateConfig(configFileName string) {
 	// Deep copy
-	configFileNameCopy := string(append([]byte(nil), configFileName...))
+	configFileNameCopy := strings.Clone(configFileName)
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	if homeDir == "" {
@@ -368,7 +368,7 @@ func ForceUpdateConfig(configFileName string) {
 
 func SetMode(mode string) {
 	// Deep copy
-	modeCopy := string(append([]byte(nil), mode...))
+	modeCopy := strings.Clone(mode)
 	if m, ok := tunnel.ModeMapping[strings.ToLower(modeCopy)]; ok {
 		tunnel.SetMode(m)
 		statistic.DefaultManager.ClearConnections()
@@ -416,8 +416,8 @@ func ProxyNames() string {
 
 func SelectProxy(groupName, proxyName string) bool {
 	// Deep copy
-	groupNameCopy := string(append([]byte(nil), groupName...))
-	proxyNameCopy := string(append([]byte(nil), proxyName...))
+	groupNameCopy := strings.Clone(groupName)
+	proxyNameCopy := strings.Clone(proxyName)
 	
 	proxies := tunnel.Proxies()
 	group, ok := proxies[groupNameCopy]
@@ -463,7 +463,7 @@ func TrafficTotalDown() int64 {
 
 func TestLatency(proxyName string) string {
 	// Deep copy
-	proxyNameCopy := string(append([]byte(nil), proxyName...))
+	proxyNameCopy := strings.Clone(proxyName)
 	
 	proxy, ok := proxiesWithProviders()[proxyNameCopy]
 	if !ok {

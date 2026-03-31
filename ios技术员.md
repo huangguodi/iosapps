@@ -7,9 +7,13 @@
 
 ## 优化需求核对清单 (已全部完成)
 
-- [x] **新增纯 Go 内存启动接口，支持从内存字符串启动**
+- [x] **新增纯 Go 内存启动接口，支持从内存字符串启动，并返回 error**
   - **实现位置**：`mobile/mobile_c_api.go`
-  - **说明**：已新增 `func MobileStartWithMemory(cfgStr string)` 接口。配置直接从内存反序列化，全程不进行文件 I/O。
+  - **说明**：已新增 `func MobileStartWithMemory(cfgStr string) error` 接口。配置直接从内存反序列化，如果解析失败不再 panic，而是将错误安全地抛给 iOS 层，避免启动假死。
+
+- [x] **所有接收字符串的接口强制进行内存深拷贝**
+  - **实现位置**：`mobile/mobile.go` 及 `mobile/mobile_c_api.go`
+  - **说明**：针对所有从 iOS 层接收 `string` 的公开接口（如 `SetMode`、`TestLatency` 等），均在第一行加入了 `strings.Clone` 或 `make([]byte) + copy` 逻辑。彻底切断 Go 异步协程与 iOS NSString/ARC 之间的生命周期绑定，杜绝悬垂指针和 `EXC_BAD_ACCESS` 崩溃。
 
 - [x] **新增空函数 `MihomoWarmup()`，用于提前触发 Go runtime 初始化**
   - **实现位置**：`mobile/mobile_c_api.go`
@@ -59,10 +63,16 @@
 ```swift
 import Mobile // 引入生成的 framework
 
-// 1. 扩展进程刚启动时，提前唤醒 (可选)
+// 1. 扩展进程刚启动时，提前唤醒
 MobileMihomoWarmup()
 
-// 2. 获取到配置字符串后，直接启动
+// 2. 获取到配置字符串后，直接启动并处理错误
 let yamlString = "..." // 从主 App 传递过来的配置
-MobileMobileStartWithMemory(yamlString)
+do {
+    try MobileMobileStartWithMemory(yamlString)
+    print("启动成功")
+} catch {
+    print("启动失败，配置解析错误: \(error)")
+    // 在这里可以断开 VPN 或通知主 App
+}
 ```
