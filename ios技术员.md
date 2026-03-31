@@ -39,9 +39,12 @@
   - **实现位置**：`.github/scripts/build-ios-static.sh`
   - **说明**：已在构建脚本的 `DEFAULT_TAGS` 中追加 `nosignals`。
 
-- [x] **编译优化：`-ldflags "-s -w -linkmode internal"`**
+- [x] **编译优化：`-ldflags "-s -w"`**
   - **实现位置**：`.github/scripts/build-ios-static.sh`
-  - **说明**：已更新 `gomobile bind` 指令，添加了对应的 ldflags 和 `-trimpath`，保证二进制体积最小化且无外部动态链接异常。
+  - **说明**：已更新 `gomobile bind` 指令，添加了对应的 ldflags 和 `-trimpath`，保证二进制体积最小化。
+
+  > 构建命令示例：
+  > `gomobile bind -target=ios -tags "nosignals" -ldflags="-s -w" -trimpath -o Mobile.xcframework ./mobile`
 
 - [x] **不使用 App Extension 不允许的系统调用**
   - **说明**：新增代码全部为纯逻辑控制和内存映射，不涉及任何诸如 `fork`、`exec` 或后台私有 API。
