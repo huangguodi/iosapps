@@ -207,7 +207,7 @@ func SetAppGroupDirectory(dir string) bool {
 
 func Start(home, configFileName string) {
 	// Deep copy to prevent ARC premature release
-	homeCopy := strings.Clone(home)
+	_ = strings.Clone(home) // unused in original logic, but keep copy just in case it's used later
 	configFileNameCopy := strings.Clone(configFileName)
 	
 	stateMu.Lock()
