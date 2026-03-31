@@ -13,6 +13,11 @@ import (
 
 // MobileStartWithMemory starts the core with a configuration string directly from memory
 func MobileStartWithMemory(cfgStr string) {
+	// 强制在 Go 堆上深拷贝一份配置数据，彻底切断与 Swift/Objective-C 的内存生命周期绑定
+	// 避免解析过程中 iOS 端 ARC 提前释放字符串导致底层崩溃
+	configBytes := make([]byte, len(cfgStr))
+	copy(configBytes, cfgStr)
+
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
@@ -29,8 +34,8 @@ func MobileStartWithMemory(cfgStr string) {
 	C_constant.SetHomeDir(homeDir)
 	log.SetLevel(log.SILENT)
 
-	// Parse config directly from memory
-	cfg, err := parseIOSConfigFromMemory([]byte(cfgStr))
+	// Parse config directly from memory using the deep-copied bytes
+	cfg, err := parseIOSConfigFromMemory(configBytes)
 	if err != nil {
 		panic(err)
 	}
