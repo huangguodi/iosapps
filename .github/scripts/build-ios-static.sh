@@ -57,6 +57,26 @@ while IFS= read -r -d '' header_path; do
   cp "$header_path" "$OUT_DIR/$header_name"
 done < <(find "$HEADER_DIR" -maxdepth 1 -type f \( -name "*.h" -o -name "*.modulemap" \) -print0)
 
+if grep -q '#include "ref.h"' "$OUT_DIR/libmihomo.h" && [[ ! -f "$OUT_DIR/ref.h" ]]; then
+  cat > "$OUT_DIR/ref.h" <<'EOF'
+#ifndef GO_SEQ_REF_H
+#define GO_SEQ_REF_H
+@import Foundation;
+@protocol goSeqRefInterface <NSObject>
+@end
+#endif
+EOF
+fi
+
+if grep -q '#include "Universe.objc.h"' "$OUT_DIR/libmihomo.h" && [[ ! -f "$OUT_DIR/Universe.objc.h" ]]; then
+  cat > "$OUT_DIR/Universe.objc.h" <<'EOF'
+#ifndef GO_UNIVERSE_OBJC_H
+#define GO_UNIVERSE_OBJC_H
+@import Foundation;
+#endif
+EOF
+fi
+
 if otool -L "$ARM64_FRAMEWORK_DIR/Mobile" | grep -E "libcrypto\\.(so|dylib)|libssl\\.(so|dylib)" >/dev/null; then
   echo "dynamic crypto library detected in output"
   exit 1
