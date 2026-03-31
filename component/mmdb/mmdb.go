@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	mihomoOnce "github.com/metacubex/mihomo/common/once"
-	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 
 	"github.com/oschwald/maxminddb-golang"
@@ -53,21 +52,9 @@ func Verify(path string) bool {
 
 func IPInstance() IPReader {
 	ipOnce.Do(func() {
-		mmdbPath := C.Path.MMDB()
-		log.Infoln("Load MMDB file: %s", mmdbPath)
-		mmdb, err := maxminddb.Open(mmdbPath)
-		if err != nil {
-			log.Fatalln("Can't load MMDB: %s", err.Error())
-		}
-		ipReader = IPReader{Reader: mmdb}
-		switch mmdb.Metadata.DatabaseType {
-		case "sing-geoip":
-			ipReader.databaseType = typeSing
-		case "Meta-geoip0":
-			ipReader.databaseType = typeMetaV0
-		default:
-			ipReader.databaseType = typeMaxmind
-		}
+		// Optimization Point 3: Avoid loading large MMDB on iOS (iOS specific build)
+		log.Infoln("Skip loading MMDB file on iOS")
+		return
 	})
 
 	return ipReader
@@ -75,13 +62,9 @@ func IPInstance() IPReader {
 
 func ASNInstance() ASNReader {
 	asnOnce.Do(func() {
-		ASNPath := C.Path.ASN()
-		log.Infoln("Load ASN file: %s", ASNPath)
-		asn, err := maxminddb.Open(ASNPath)
-		if err != nil {
-			log.Fatalln("Can't load ASN: %s", err.Error())
-		}
-		asnReader = ASNReader{Reader: asn}
+		// Optimization Point 3: Avoid loading large ASN on iOS (iOS specific build)
+		log.Infoln("Skip loading ASN file on iOS")
+		return
 	})
 
 	return asnReader

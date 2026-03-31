@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,8 +18,10 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/keepalive"
 	"github.com/metacubex/mihomo/component/mmdb"
 	"github.com/metacubex/mihomo/component/process"
+	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
@@ -164,6 +167,29 @@ func FeedPacketFromFlow(packet *PacketFlowPacket) bool {
 	return sing_tun.FeedPacketFromFlow(sing_tun.NewPacketFlowPacket(packet.data, packet.af))
 }
 
+// FeedPacketBytes feeds raw bytes directly into the tun device to avoid CGO object lifecycle issues.
+// This implements Core Optimization Point 1 (MobileFeedPacketBytes).
+func FeedPacketBytes(data []byte, af int64) bool {
+	if len(data) == 0 {
+		return false
+	}
+	return sing_tun.FeedPacketBytes(data, af)
+}
+
+// FeedPacketsBytesBatch feeds multiple packets at once to reduce CGO call overhead.
+func FeedPacketsBytesBatch(data [][]byte, afs []int64) int {
+	if len(data) == 0 || len(data) != len(afs) {
+		return 0
+	}
+	count := 0
+	for i, d := range data {
+		if sing_tun.FeedPacketBytes(d, afs[i]) {
+			count++
+		}
+	}
+	return count
+}
+
 func SetAppGroupDirectory(dir string) bool {
 	normalized, ok := normalizeDir(dir)
 	if !ok {
@@ -201,6 +227,27 @@ func Start(home, configFileName string) {
 	hub.ApplyConfig(cfg)
 	lastConfigLoadAt = time.Now()
 	isActive = true
+	
+	// Optimization Point 4: Aggressive idle connection and timeout control
+	keepalive.SetKeepAliveIdle(15 * time.Second)
+	keepalive.SetKeepAliveInterval(15 * time.Second)
+	tunnel.SetUDPTimeout(30 * time.Second)
+	
+	// Optimization Point 2: Active memory release timer
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for {
+			stateMu.Lock()
+			active := isActive
+			stateMu.Unlock()
+			if !active {
+				return
+			}
+			<-ticker.C
+			debug.FreeOSMemory()
+		}
+	}()
 }
 
 func Stop() {
@@ -266,6 +313,14 @@ func RestartTunnelForNetworkChange() bool {
 	lastConfigLoadAt = time.Now()
 	isActive = true
 	return true
+}
+
+// ResetNetwork provides a lightweight way to clear invalid connections and DNS cache
+// during iOS sleep/wake or network switching, without full tunnel restart (Optimization Point 6)
+func ResetNetwork() {
+	statistic.DefaultManager.ClearConnections()
+	resolver.ClearCache()
+	resolver.ResetConnection()
 }
 
 func SetLogLevel(level string) {

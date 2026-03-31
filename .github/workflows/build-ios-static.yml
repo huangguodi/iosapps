@@ -10,6 +10,10 @@ on:
         description: Go build tags
         required: false
         default: ""
+      ios_min_version:
+        description: iOS minimum deployment target
+        required: false
+        default: "15.0"
 
 jobs:
   build-ios-static:
@@ -31,6 +35,7 @@ jobs:
       - name: Build libmihomo.a and header
         env:
           GO_TAGS: ${{ github.event.inputs.go_tags || '' }}
+          IOS_MIN_VERSION: ${{ github.event.inputs.ios_min_version || '15.0' }}
         run: bash .github/scripts/build-ios-static.sh
 
       - name: Verify outputs

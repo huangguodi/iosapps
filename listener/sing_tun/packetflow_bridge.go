@@ -39,6 +39,14 @@ var (
 	packetFlowBridgeMu sync.RWMutex
 	packetFlowBridge   PacketFlowBridge
 	packetInboundQueue chan *PacketFlowPacket
+
+	// Memory pool for raw packet data to reduce GC spikes (Optimization Point 2)
+	packetDataPool = sync.Pool{
+		New: func() interface{} {
+			b := make([]byte, 1500) // MTU size
+			return &b
+		},
+	}
 )
 
 func SetPacketFlowBridge(bridge PacketFlowBridge) {
@@ -62,6 +70,38 @@ func getPacketFlowBridge() PacketFlowBridge {
 	bridge := packetFlowBridge
 	packetFlowBridgeMu.RUnlock()
 	return bridge
+}
+
+func FeedPacketBytes(data []byte, af int64) bool {
+	if len(data) == 0 {
+		return false
+	}
+	packetFlowBridgeMu.RLock()
+	queue := packetInboundQueue
+	packetFlowBridgeMu.RUnlock()
+	if queue == nil {
+		return false
+	}
+	
+	// Use pool to avoid allocation
+	bPtr := packetDataPool.Get().(*[]byte)
+	b := *bPtr
+	if cap(b) < len(data) {
+		b = make([]byte, len(data))
+	} else {
+		b = b[:len(data)]
+	}
+	copy(b, data)
+	
+	packet := &PacketFlowPacket{data: b, af: af}
+	select {
+	case queue <- packet:
+		return true
+	default:
+		// Queue full, return memory to pool
+		packetDataPool.Put(&b)
+		return false
+	}
 }
 
 func FeedPacketFromFlow(packet *PacketFlowPacket) bool {
@@ -123,6 +163,13 @@ func (t *packetFlowTun) Read(p []byte) (int, error) {
 			p[2] = 0
 			p[3] = byte(packet.af)
 			copy(p[4:payloadLen], packet.data[:payloadLen-4])
+			
+			// Return to pool after reading
+			if cap(packet.data) >= 1500 {
+				b := packet.data[:cap(packet.data)]
+				packetDataPool.Put(&b)
+			}
+			
 			return payloadLen, nil
 		}
 	}

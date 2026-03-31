@@ -35,7 +35,8 @@ mkdir -p "$OUT_DIR"
 
 gomobile init
 
-gomobile bind -target=ios -tags "$BUILD_TAGS" -o "$XCFRAMEWORK_DIR" ./mobile
+# Optimization Point 3: Compile flags for smaller binary size
+gomobile bind -target=ios -tags "$BUILD_TAGS" -ldflags="-s -w" -trimpath -o "$XCFRAMEWORK_DIR" ./mobile
 
 if [[ ! -f "$ARM64_FRAMEWORK_DIR/Mobile" ]]; then
   echo "arm64 framework not found in $XCFRAMEWORK_DIR"

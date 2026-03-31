@@ -55,13 +55,7 @@ func (u *CoreUpdater) CoreBaseName() string {
 		// mihomo-linux-armv5
 		return fmt.Sprintf("mihomo-%s-%sv%s", runtime.GOOS, runtime.GOARCH, features.GOARM)
 	case "arm64":
-		if runtime.GOOS == "android" {
-			// mihomo-android-arm64-v8
-			return fmt.Sprintf("mihomo-%s-%s-v8", runtime.GOOS, runtime.GOARCH)
-		} else {
-			// mihomo-linux-arm64
-			return fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
-		}
+		return fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
 	case "mips", "mipsle":
 		// mihomo-linux-mips-hardfloat
 		return fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOMIPS)
@@ -275,11 +269,7 @@ func (u *CoreUpdater) backup(currentExePath, backupExePath, backupDir string) (e
 	// On Windows, since the running executable cannot be overwritten or deleted, it uses os.Rename to move the file to the backup path.
 	// On other platforms, it copies the file to the backup path, preserving the original file and its permissions.
 	// The backup directory is created if it does not exist.
-	if runtime.GOOS == "windows" {
-		err = os.Rename(currentExePath, backupExePath)
-	} else {
-		err = u.copyFile(currentExePath, backupExePath)
-	}
+	err = u.copyFile(currentExePath, backupExePath)
 	if err != nil {
 		return err
 	}

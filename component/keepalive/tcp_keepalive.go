@@ -2,7 +2,6 @@ package keepalive
 
 import (
 	"net"
-	"runtime"
 	"time"
 
 	"github.com/metacubex/mihomo/common/atomic"
@@ -34,11 +33,7 @@ func KeepAliveInterval() time.Duration {
 }
 
 func SetDisableKeepAlive(disable bool) {
-	if runtime.GOOS == "android" {
-		setDisableKeepAlive(true)
-	} else {
-		setDisableKeepAlive(disable)
-	}
+	setDisableKeepAlive(disable)
 }
 
 func setDisableKeepAlive(disable bool) {

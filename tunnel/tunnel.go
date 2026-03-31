@@ -249,6 +249,11 @@ func SetMode(m TunnelMode) {
 	mode = m
 }
 
+// SetUDPTimeout change the default udp timeout
+func SetUDPTimeout(t time.Duration) {
+	udpTimeout = t
+}
+
 func FindProcessMode() process.FindProcessMode {
 	return findProcessMode.Load()
 }
@@ -403,6 +408,13 @@ func handleUDPConn(packet C.PacketAdapter) {
 		return
 	}
 
+	// Optimization Point 4: iOS max connection limit
+	if statistic.DefaultManager.ConnectionsCount() >= 1000 {
+		packet.Drop()
+		log.Warnln("[UDP] Drop packet due to max connections limit reached")
+		return
+	}
+
 	metadata := packet.Metadata()
 	if !metadata.Valid() {
 		packet.Drop()
@@ -482,6 +494,13 @@ func handleUDPConn(packet C.PacketAdapter) {
 func handleTCPConn(connCtx C.ConnContext) {
 	if !isHandle(connCtx.Metadata().Type) {
 		_ = connCtx.Conn().Close()
+		return
+	}
+
+	// Optimization Point 4: iOS max connection limit
+	if statistic.DefaultManager.ConnectionsCount() >= 1000 {
+		_ = connCtx.Conn().Close()
+		log.Warnln("[TCP] Drop connection due to max connections limit reached")
 		return
 	}
 

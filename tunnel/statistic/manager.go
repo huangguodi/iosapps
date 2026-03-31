@@ -45,6 +45,15 @@ func (m *Manager) Leave(c Tracker) {
 	m.connections.Delete(c.ID())
 }
 
+func (m *Manager) ConnectionsCount() int {
+	count := 0
+	m.connections.Range(func(key string, value Tracker) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 func (m *Manager) Get(id string) (c Tracker) {
 	if value, ok := m.connections.Load(id); ok {
 		c = value

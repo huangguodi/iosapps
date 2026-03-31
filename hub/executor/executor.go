@@ -220,6 +220,8 @@ func updateExperimental(c *config.Experimental) {
 	if c.QUICGoDisableECN {
 		_ = os.Setenv("QUIC_GO_DISABLE_ECN", strconv.FormatBool(true))
 	}
+	// For iOS specifically, we need UDP/QUIC fallback mechanisms, 
+	// we will ensure this behavior by tuning TCP timeout instead.
 	resolver.SetIP4PEnable(c.IP4PEnable)
 }
 
