@@ -366,7 +366,7 @@ func (d *Decoder) decodeMapFromMap(name string, dataVal reflect.Value, val refle
 	val.Set(valMap)
 
 	if len(errors) > 0 {
-		return fmt.Errorf(strings.Join(errors, ","))
+		return fmt.Errorf("%s", strings.Join(errors, ","))
 	}
 
 	return nil
@@ -462,7 +462,7 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 			if squash {
 				if fieldVal.Kind() != reflect.Struct {
 					errors = append(errors,
-						fmt.Errorf("%s: unsupported type for squash: %s", fieldType.Name, fieldVal.Kind()).Error())
+						fmt.Sprintf("%s: unsupported type for squash: %s", fieldType.Name, fieldVal.Kind()))
 				} else {
 					structs = append(structs, fieldVal)
 				}
@@ -592,7 +592,7 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf(strings.Join(errors, ","))
+		return fmt.Errorf("%s", strings.Join(errors, ","))
 	}
 
 	return nil
