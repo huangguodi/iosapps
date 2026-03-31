@@ -39,6 +39,7 @@ var (
 	homeDir            string
 	cfgFile            string
 	appGroupDir        string
+	lastConfigBytes    []byte
 	lastConfigLoadAt   time.Time
 	isActive           bool
 	socketProtectorMu  sync.RWMutex
@@ -192,6 +193,53 @@ func FeedPacketsBytesBatch(data [][]byte, afs []int64) int {
 	return count
 }
 
+func cloneBytes(src []byte) []byte {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func applyIOSActiveConfig(cfg *config.Config) {
+	hub.ApplyConfig(cfg)
+	lastConfigLoadAt = time.Now()
+	isActive = true
+	keepalive.SetKeepAliveIdle(15 * time.Second)
+	keepalive.SetKeepAliveInterval(15 * time.Second)
+	tunnel.SetUDPTimeout(30 * time.Second)
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for {
+			stateMu.Lock()
+			active := isActive
+			stateMu.Unlock()
+			if !active {
+				return
+			}
+			<-ticker.C
+			debug.FreeOSMemory()
+		}
+	}()
+}
+
+func loadIOSConfigLocked() (*config.Config, error) {
+	if len(lastConfigBytes) > 0 {
+		return parseIOSConfigFromMemory(cloneBytes(lastConfigBytes))
+	}
+	if homeDir == "" || cfgFile == "" {
+		return nil, fmt.Errorf("missing iOS config state")
+	}
+	configPath, ok := resolveConfigPath(homeDir, cfgFile)
+	if !ok {
+		return nil, fmt.Errorf("config path is outside app group directory")
+	}
+	C.SetConfig(configPath)
+	return parseIOSConfig(C.Path.Config())
+}
+
 func SetAppGroupDirectory(dir string) bool {
 	// Deep copy to prevent ARC premature release
 	dirCopy := strings.Clone(dir)
@@ -209,7 +257,7 @@ func Start(home, configFileName string) {
 	// Deep copy to prevent ARC premature release
 	_ = strings.Clone(home) // unused in original logic, but keep copy just in case it's used later
 	configFileNameCopy := strings.Clone(configFileName)
-	
+
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
@@ -218,6 +266,7 @@ func Start(home, configFileName string) {
 	}
 	homeDir = appGroupDir
 	cfgFile = configFileNameCopy
+	lastConfigBytes = nil
 
 	C.SetHomeDir(homeDir)
 	configPath, ok := resolveConfigPath(homeDir, cfgFile)
@@ -232,30 +281,7 @@ func Start(home, configFileName string) {
 	if err != nil {
 		panic(err)
 	}
-	hub.ApplyConfig(cfg)
-	lastConfigLoadAt = time.Now()
-	isActive = true
-	
-	// Optimization Point 4: Aggressive idle connection and timeout control
-	keepalive.SetKeepAliveIdle(15 * time.Second)
-	keepalive.SetKeepAliveInterval(15 * time.Second)
-	tunnel.SetUDPTimeout(30 * time.Second)
-	
-	// Optimization Point 2: Active memory release timer
-	go func() {
-		ticker := time.NewTicker(2 * time.Minute)
-		defer ticker.Stop()
-		for {
-			stateMu.Lock()
-			active := isActive
-			stateMu.Unlock()
-			if !active {
-				return
-			}
-			<-ticker.C
-			debug.FreeOSMemory()
-		}
-	}()
+	applyIOSActiveConfig(cfg)
 }
 
 func Stop() {
@@ -275,32 +301,31 @@ func Sleep() {
 func Wake() bool {
 	stateMu.Lock()
 	defer stateMu.Unlock()
-	if homeDir == "" || cfgFile == "" {
+	if homeDir == "" && appGroupDir != "" {
+		homeDir = appGroupDir
+	}
+	if homeDir == "" && len(lastConfigBytes) == 0 {
 		return false
 	}
 	if isActive {
 		return true
 	}
 	C.SetHomeDir(homeDir)
-	configPath, ok := resolveConfigPath(homeDir, cfgFile)
-	if !ok {
-		return false
-	}
-	C.SetConfig(configPath)
-	cfg, err := parseIOSConfig(C.Path.Config())
+	cfg, err := loadIOSConfigLocked()
 	if err != nil {
 		return false
 	}
-	hub.ApplyConfig(cfg)
-	lastConfigLoadAt = time.Now()
-	isActive = true
+	applyIOSActiveConfig(cfg)
 	return true
 }
 
 func RestartTunnelForNetworkChange() bool {
 	stateMu.Lock()
 	defer stateMu.Unlock()
-	if homeDir == "" || cfgFile == "" {
+	if homeDir == "" && appGroupDir != "" {
+		homeDir = appGroupDir
+	}
+	if homeDir == "" && len(lastConfigBytes) == 0 {
 		return false
 	}
 	if isActive {
@@ -308,18 +333,11 @@ func RestartTunnelForNetworkChange() bool {
 		isActive = false
 	}
 	C.SetHomeDir(homeDir)
-	configPath, ok := resolveConfigPath(homeDir, cfgFile)
-	if !ok {
-		return false
-	}
-	C.SetConfig(configPath)
-	cfg, err := parseIOSConfig(C.Path.Config())
+	cfg, err := loadIOSConfigLocked()
 	if err != nil {
 		return false
 	}
-	hub.ApplyConfig(cfg)
-	lastConfigLoadAt = time.Now()
-	isActive = true
+	applyIOSActiveConfig(cfg)
 	return true
 }
 
@@ -346,24 +364,23 @@ func ForceUpdateConfig(configFileName string) {
 	configFileNameCopy := strings.Clone(configFileName)
 	stateMu.Lock()
 	defer stateMu.Unlock()
-	if homeDir == "" {
+	if configFileNameCopy != "" {
+		cfgFile = configFileNameCopy
+	}
+	if homeDir == "" && appGroupDir != "" {
+		homeDir = appGroupDir
+	}
+	if homeDir == "" && len(lastConfigBytes) == 0 {
 		return
 	}
 	if time.Since(lastConfigLoadAt) < time.Second {
 		return
 	}
-	cfgFile = configFileNameCopy
-	configPath, ok := resolveConfigPath(homeDir, cfgFile)
-	if !ok {
-		panic("config path is outside app group directory")
-	}
-	C.SetConfig(configPath)
-	cfg, err := parseIOSConfig(C.Path.Config())
+	cfg, err := loadIOSConfigLocked()
 	if err != nil {
 		panic(err)
 	}
-	hub.ApplyConfig(cfg)
-	lastConfigLoadAt = time.Now()
+	applyIOSActiveConfig(cfg)
 }
 
 func SetMode(mode string) {
@@ -418,7 +435,7 @@ func SelectProxy(groupName, proxyName string) bool {
 	// Deep copy
 	groupNameCopy := strings.Clone(groupName)
 	proxyNameCopy := strings.Clone(proxyName)
-	
+
 	proxies := tunnel.Proxies()
 	group, ok := proxies[groupNameCopy]
 	if !ok {
@@ -464,7 +481,7 @@ func TrafficTotalDown() int64 {
 func TestLatency(proxyName string) string {
 	// Deep copy
 	proxyNameCopy := strings.Clone(proxyName)
-	
+
 	proxy, ok := proxiesWithProviders()[proxyNameCopy]
 	if !ok {
 		return ""
