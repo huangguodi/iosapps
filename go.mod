@@ -52,6 +52,7 @@ require (
 	gitlab.com/go-extension/aes-ccm v0.0.0-20230221065045-e58665ef23c7
 	go.uber.org/automaxprocs v1.6.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
+	golang.org/x/mobile v0.0.0-20260312152759-81488f6aeb60
 	gopkg.in/yaml.v3 v3.0.1
 )
 

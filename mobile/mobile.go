@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "golang.org/x/mobile/bind"
+
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/keepalive"
