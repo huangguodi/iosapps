@@ -31,12 +31,16 @@ func MobileStartWithMemory(cfgStr string) error {
 	// 减少 sysmon 开销及相关信号冲突
 	os.Setenv("GODEBUG", "asyncpreemptoff=1,cgocheck=0")
 
+	// 记录原始日志级别，启动完成后恢复
+	oldLevel := log.Level()
+	
 	// 关闭启动阶段日志输出，不影响运行时日志
 	homeDir = appGroupDir
 	cfgFile = ""
 	lastConfigBytes = cloneBytes(configBytes)
 	C_constant.SetHomeDir(homeDir)
 	log.SetLevel(log.SILENT)
+	defer log.SetLevel(oldLevel)
 
 	// Parse config directly from memory using the deep-copied bytes
 	cfg, err := parseIOSConfigFromMemory(configBytes)

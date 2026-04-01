@@ -152,18 +152,14 @@ func (t *packetFlowTun) Read(p []byte) (int, error) {
 			if packet == nil || len(packet.data) == 0 {
 				continue
 			}
-			payloadLen := len(packet.data) + 4
+			payloadLen := len(packet.data)
 			if payloadLen > len(p) {
 				payloadLen = len(p)
 			}
-			if payloadLen < 5 {
+			if payloadLen == 0 {
 				return 0, nil
 			}
-			p[0] = 0
-			p[1] = 0
-			p[2] = 0
-			p[3] = byte(packet.af)
-			copy(p[4:payloadLen], packet.data[:payloadLen-4])
+			copy(p[:payloadLen], packet.data[:payloadLen])
 			
 			// Return to pool after reading
 			if cap(packet.data) >= 1500 {
@@ -178,10 +174,19 @@ func (t *packetFlowTun) Read(p []byte) (int, error) {
 }
 
 func (t *packetFlowTun) Write(p []byte) (int, error) {
-	if len(p) < 5 {
+	if len(p) == 0 {
 		return len(p), nil
 	}
-	packet := NewPacketFlowPacket(p[4:], int64(p[3]))
+	var af int64
+	version := p[0] >> 4
+	if version == 4 {
+		af = 2 // AF_INET on Darwin
+	} else if version == 6 {
+		af = 30 // AF_INET6 on Darwin
+	} else {
+		return len(p), nil
+	}
+	packet := NewPacketFlowPacket(p, af)
 	log.Debugln("[iOS-Debug] [sing_tun] WritePacket to packetFlow af=%d size=%d", packet.af, len(packet.data))
 	if !t.bridge.WritePacket(packet) {
 		t.bridge.OnPacketFlowError("write packet failed")
