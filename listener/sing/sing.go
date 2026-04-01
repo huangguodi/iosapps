@@ -120,6 +120,7 @@ func (h *ListenerHandler) ParseSpecialFqdn(ctx context.Context, conn net.Conn, m
 }
 
 func (h *ListenerHandler) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+	log.Debugln("[iOS-Debug] [sing] New TCP Connection: src=%s dst=%s", metadata.Source.String(), metadata.Destination.String())
 	if h.IsSpecialFqdn(metadata.Destination.Fqdn) {
 		return h.ParseSpecialFqdn(ctx, conn, metadata)
 	}
@@ -147,6 +148,7 @@ func (h *ListenerHandler) NewConnection(ctx context.Context, conn net.Conn, meta
 }
 
 func (h *ListenerHandler) NewPacketConnection(ctx context.Context, conn network.PacketConn, metadata M.Metadata) error {
+	log.Debugln("[iOS-Debug] [sing] New UDP Packet Connection: src=%s dst=%s", metadata.Source.String(), metadata.Destination.String())
 	if metadata.Destination.Fqdn == packetaddr.SeqPacketMagicAddress {
 		conn = packetaddr.NewConn(bufio.NewNetPacketConn(conn), M.Socksaddr{})
 	}
@@ -209,6 +211,7 @@ type localAddr interface {
 }
 
 func (h *ListenerHandler) NewPacket(ctx context.Context, key netip.AddrPort, buffer *buf.Buffer, metadata M.Metadata, init func(natConn network.PacketConn) network.PacketWriter) {
+	log.Debugln("[iOS-Debug] [sing] New UDP Packet: src=%s dst=%s", metadata.Source.String(), metadata.Destination.String())
 	writer := bufio.NewNetPacketWriter(init(nil))
 	mutex := sync.Mutex{}
 	cPacket := &packet{

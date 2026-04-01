@@ -3,6 +3,7 @@ package sing_tun
 import (
 	"errors"
 	"sync"
+	"github.com/metacubex/mihomo/log"
 )
 
 type PacketFlowPacket struct {
@@ -166,10 +167,11 @@ func (t *packetFlowTun) Read(p []byte) (int, error) {
 			
 			// Return to pool after reading
 			if cap(packet.data) >= 1500 {
-				b := packet.data[:cap(packet.data)]
-				packetDataPool.Put(&b)
+				packet.data = packet.data[:cap(packet.data)]
+				packetDataPool.Put(&packet.data)
 			}
 			
+			log.Debugln("[iOS-Debug] [sing_tun] ReadPacket from packetFlow af=%d size=%d", packet.af, payloadLen)
 			return payloadLen, nil
 		}
 	}
@@ -180,6 +182,7 @@ func (t *packetFlowTun) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	packet := NewPacketFlowPacket(p[4:], int64(p[3]))
+	log.Debugln("[iOS-Debug] [sing_tun] WritePacket to packetFlow af=%d size=%d", packet.af, len(packet.data))
 	if !t.bridge.WritePacket(packet) {
 		t.bridge.OnPacketFlowError("write packet failed")
 	}
